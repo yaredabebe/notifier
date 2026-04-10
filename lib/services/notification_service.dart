@@ -23,160 +23,214 @@ class NotificationService {
   static const String normalChannelName = 'Reminders';
 
   Future<void> init() async {
-    // Initialize local notifications for Android only
-    const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    
-    const InitializationSettings settings = InitializationSettings(
-      android: androidSettings,
-      iOS: null, // No iOS support
-    );
-    
-    await _localNotifications.initialize(settings);
-    
-    // Create notification channels
-    await _createNotificationChannels();
-    
-    // Request critical permissions
-    await _requestPermissions();
-    
-    // Initialize Android Alarm Manager
-    await AndroidAlarmManager.initialize();
-    
-    print('✅ Notification service initialized for Android');
+    try {
+      print('  📱 Step 1: Initializing local notifications...');
+      // Initialize local notifications for Android only
+      const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      
+      const InitializationSettings settings = InitializationSettings(
+        android: androidSettings,
+        iOS: null, // No iOS support
+      );
+      
+      await _localNotifications.initialize(settings);
+      print('  ✅ Local notifications initialized');
+      
+      print('  📱 Step 2: Creating notification channels...');
+      // Create notification channels
+      await _createNotificationChannels();
+      print('  ✅ Notification channels created');
+      
+      print('  📱 Step 3: Requesting permissions...');
+      // Request critical permissions
+      await _requestPermissions();
+      print('  ✅ Permissions requested');
+      
+      print('  📱 Step 4: Initializing Android Alarm Manager...');
+      // Initialize Android Alarm Manager with error handling
+      try {
+        await AndroidAlarmManager.initialize();
+        print('  ✅ Android Alarm Manager initialized');
+      } catch (e) {
+        print('  ⚠️ Android Alarm Manager init warning: $e');
+        // Continue even if alarm manager fails - notifications still work
+      }
+      
+      print('✅ Notification service fully initialized for Android');
+    } catch (e, stackTrace) {
+      print('❌ Notification service init failed: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   Future<void> _createNotificationChannels() async {
-    // Critical alarm channel (bypasses DND)
-    const AndroidNotificationChannel criticalChannel = AndroidNotificationChannel(
-      criticalAlarmChannelId,
-      criticalAlarmChannelName,
-      description: 'Critical alarms that bypass Do Not Disturb mode',
-      importance: Importance.max,
-      enableVibration: true,
-      playSound: true,
-    );
-    
-    await _localNotifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(criticalChannel);
-    
-    // Normal reminders channel
-    const AndroidNotificationChannel normalChannel = AndroidNotificationChannel(
-      normalChannelId,
-      normalChannelName,
-      description: 'Normal reminders',
-      importance: Importance.high,
-    );
-    
-    await _localNotifications.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(normalChannel);
+    try {
+      final androidPlugin = _localNotifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      
+      if (androidPlugin == null) {
+        print('  ⚠️ Android plugin is null, cannot create channels');
+        return;
+      }
+      
+      // Critical alarm channel (bypasses DND)
+      const AndroidNotificationChannel criticalChannel = AndroidNotificationChannel(
+        criticalAlarmChannelId,
+        criticalAlarmChannelName,
+        description: 'Critical alarms that bypass Do Not Disturb mode',
+        importance: Importance.max,
+        enableVibration: true,
+        playSound: true,
+      );
+      
+      await androidPlugin.createNotificationChannel(criticalChannel);
+      print('  ✅ Critical channel created');
+      
+      // Normal reminders channel
+      const AndroidNotificationChannel normalChannel = AndroidNotificationChannel(
+        normalChannelId,
+        normalChannelName,
+        description: 'Normal reminders',
+        importance: Importance.high,
+      );
+      
+      await androidPlugin.createNotificationChannel(normalChannel);
+      print('  ✅ Normal channel created');
+    } catch (e) {
+      print('  ⚠️ Error creating channels: $e');
+    }
   }
 
   Future<void> _requestPermissions() async {
-    // Android permissions (vibration permission not needed)
-    if (await Permission.notification.isDenied) {
-      await Permission.notification.request();
+    try {
+      // Android permissions (vibration permission not needed)
+      if (await Permission.notification.isDenied) {
+        print('  📱 Requesting notification permission...');
+        await Permission.notification.request();
+      }
+      
+      if (await Permission.scheduleExactAlarm.isDenied) {
+        print('  📱 Requesting exact alarm permission...');
+        await Permission.scheduleExactAlarm.request();
+      }
+      
+      if (await Permission.ignoreBatteryOptimizations.isDenied) {
+        print('  📱 Requesting battery optimization ignore...');
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+      
+      print('  ✅ All permissions checked/requested');
+    } catch (e) {
+      print('  ⚠️ Permission request error: $e');
     }
-    
-    if (await Permission.scheduleExactAlarm.isDenied) {
-      await Permission.scheduleExactAlarm.request();
-    }
-    
-    if (await Permission.ignoreBatteryOptimizations.isDenied) {
-      await Permission.ignoreBatteryOptimizations.request();
-    }
-    
-    // Note: Vibration works automatically on Android without permission
   }
 
   // Schedule an alarm for an important event
- // Schedule an alarm for an important event
-Future<void> scheduleAlarm(ImportantEvent event) async {
-  final DateTime alarmTime = event.dateTime;
+  Future<void> scheduleAlarm(ImportantEvent event) async {
+    try {
+      final DateTime alarmTime = event.dateTime;
+      print('  ⏰ Scheduling alarm for ${event.title} at $alarmTime');
+      
+      // For Android: Full-screen intent configuration
+      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        criticalAlarmChannelId,
+        criticalAlarmChannelName,
+        channelDescription: '🔔 IMPORTANT: ${event.title}',
+        importance: Importance.max,
+        priority: Priority.high,
+        fullScreenIntent: true, // This is KEY for alarm behavior
+        enableVibration: event.vibrateEnabled,
+        playSound: true,
+        ongoing: true,
+        autoCancel: false,
+        category: AndroidNotificationCategory.alarm,
+        visibility: NotificationVisibility.public,
+        actions: const [
+          AndroidNotificationAction('stop', '⛔ STOP', showsUserInterface: true),
+          AndroidNotificationAction('snooze_5', '⏸️ SNOOZE 5min'),
+          AndroidNotificationAction('snooze_10', '⏸️ SNOOZE 10min'),
+        ],
+      );
+      
+      final NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+      );
+      
+      // Calculate the scheduled time
+      final scheduledDate = tz.TZDateTime.from(alarmTime, tz.local);
+      
+      // Schedule the notification
+      await _localNotifications.zonedSchedule(
+        event.id.hashCode,
+        '🔔 ${event.eventType.displayName}',
+        event.title,
+        scheduledDate,
+        platformDetails,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        matchDateTimeComponents: null, // NO automatic recurrence
+        payload: jsonEncode({
+          'eventId': event.id,
+          'title': event.title,
+          'description': event.description ?? '',
+          'type': event.eventType.toString(),
+        }),
+      );
+      
+      print('  ✅ Notification scheduled');
+      
+      // Also schedule with Android Alarm Manager for reliable background execution
+      await _scheduleWithAlarmManager(event);
+      
+      print('✅ Alarm scheduled for ${event.title} at $alarmTime');
+    } catch (e) {
+      print('❌ Failed to schedule alarm: $e');
+    }
+  }
   
-  // For Android: Full-screen intent configuration
-  final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-    criticalAlarmChannelId,
-    criticalAlarmChannelName,
-    channelDescription: '🔔 IMPORTANT: ${event.title}',
-    importance: Importance.max,
-    priority: Priority.high,
-    fullScreenIntent: true, // This is KEY for alarm behavior
-    enableVibration: event.vibrateEnabled,
-    playSound: true,
-    ongoing: true,
-    autoCancel: false,
-    category: AndroidNotificationCategory.alarm,
-    visibility: NotificationVisibility.public,
-    actions: [
-      const AndroidNotificationAction('stop', '⛔ STOP', showsUserInterface: true),
-      const AndroidNotificationAction('snooze_5', '⏸️ SNOOZE 5min'),
-      const AndroidNotificationAction('snooze_10', '⏸️ SNOOZE 10min'),
-    ],
-  );
-  
-  final NotificationDetails platformDetails = NotificationDetails(
-    android: androidDetails,
-  );
-  
-  // Calculate the scheduled time
-  final scheduledDate = tz.TZDateTime.from(alarmTime, tz.local);
-  
-  // Schedule the notification
- await _localNotifications.zonedSchedule(
-  event.id.hashCode,
-  '🔔 ${event.eventType.displayName}',
-  event.title,
-  scheduledDate,
-  platformDetails,
-  androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-  matchDateTimeComponents: null, // NO automatic recurrence
-  payload: jsonEncode({
-    'eventId': event.id,
-    'title': event.title,
-    'description': event.description ?? '',
-    'type': event.eventType.toString(),
-  }),
-);
-  
-  // Also schedule with Android Alarm Manager for reliable background execution
-  await _scheduleWithAlarmManager(event);
-  
-  print('✅ Alarm scheduled for ${event.title} at $alarmTime');
-}
   // Use Android Alarm Manager for true alarm clock behavior
   Future<void> _scheduleWithAlarmManager(ImportantEvent event) async {
-    final int alarmId = event.id.hashCode;
-    final DateTime alarmTime = event.dateTime;
-    final now = DateTime.now();
-    final Duration delay = alarmTime.difference(now);
-    
-    if (delay.isNegative) {
-      print('⚠️ Alarm time is in the past, not scheduling');
-      return;
+    try {
+      final int alarmId = event.id.hashCode;
+      final DateTime alarmTime = event.dateTime;
+      final now = DateTime.now();
+      final Duration delay = alarmTime.difference(now);
+      
+      if (delay.isNegative) {
+        print('⚠️ Alarm time is in the past, not scheduling');
+        return;
+      }
+      
+      // Store event data in shared preferences for retrieval
+      await AlarmHandler.storeEventData(event);
+      
+      // Schedule one-time alarm
+      await AndroidAlarmManager.oneShot(
+        delay,
+        alarmId,
+        AlarmHandler.alarmCallback,
+        exact: true,
+        wakeup: true,
+        alarmClock: true, // This makes it a real alarm clock
+        allowWhileIdle: true,
+      );
+      
+      print('✅ Android Alarm Manager scheduled for ${event.title} in ${delay.inMinutes} minutes');
+    } catch (e) {
+      print('⚠️ Android Alarm Manager scheduling failed: $e');
+      // Don't rethrow - notifications still work
     }
-    
-    // Store event data in shared preferences for retrieval
-    await AlarmHandler.storeEventData(event);
-    
-    // Schedule one-time alarm
-    await AndroidAlarmManager.oneShot(
-      delay,
-      alarmId,
-      AlarmHandler.alarmCallback,
-      exact: true,
-      wakeup: true,
-      alarmClock: true, // This makes it a real alarm clock
-      allowWhileIdle: true,
-    );
-    
-    print('✅ Android Alarm Manager scheduled for ${event.title} in ${delay.inMinutes} minutes');
   }
 
   // Cancel an alarm
   Future<void> cancelAlarm(ImportantEvent event) async {
-    await _localNotifications.cancel(event.id.hashCode);
-    await AndroidAlarmManager.cancel(event.id.hashCode);
-    print('❌ Alarm cancelled for ${event.title}');
+    try {
+      await _localNotifications.cancel(event.id.hashCode);
+      await AndroidAlarmManager.cancel(event.id.hashCode);
+      print('❌ Alarm cancelled for ${event.title}');
+    } catch (e) {
+      print('⚠️ Error cancelling alarm: $e');
+    }
   }
 
   // Snooze an alarm

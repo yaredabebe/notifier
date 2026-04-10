@@ -1,41 +1,22 @@
-import 'package:hive/hive.dart';
 import 'event_type.dart';
 
-part 'important_event.g.dart';
+// Remove these lines:
+// import 'package:hive/hive.dart';
+// part 'important_event.g.dart';
+// @HiveType(typeId: 0)
+// @HiveField(0), @HiveField(1), etc.
 
-@HiveType(typeId: 0)
 class ImportantEvent {
-  @HiveField(0)
   final String id;
-  
-  @HiveField(1)
   final String title;
-  
-  @HiveField(2)
   final String? description;
-  
-  @HiveField(3)
   final DateTime dateTime;
-  
-  @HiveField(4)
   final EventType eventType;
-  
-  @HiveField(5)
   final bool isRecurring;
-  
-  @HiveField(6)
   final int snoozeDuration;
-  
-  @HiveField(7)
   final String soundAsset;
-  
-  @HiveField(8)
   final bool vibrateEnabled;
-  
-  @HiveField(9)
   final DateTime createdAt;
-  
-  @HiveField(10)
   final bool isEnabled;
   
   ImportantEvent({
@@ -87,7 +68,7 @@ class ImportantEvent {
       'title': title,
       'description': description,
       'dateTime': dateTime.toIso8601String(),
-      'eventType': eventType.toString(),
+      'eventType': eventType.index, // Store as index instead of string
       'isRecurring': isRecurring,
       'snoozeDuration': snoozeDuration,
       'soundAsset': soundAsset,
@@ -103,9 +84,7 @@ class ImportantEvent {
       title: json['title'],
       description: json['description'],
       dateTime: DateTime.parse(json['dateTime']),
-      eventType: EventType.values.firstWhere(
-        (e) => e.toString() == json['eventType'],
-      ),
+      eventType: EventType.values[json['eventType']], // Get from index
       isRecurring: json['isRecurring'],
       snoozeDuration: json['snoozeDuration'],
       soundAsset: json['soundAsset'],
