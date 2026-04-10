@@ -1,27 +1,21 @@
+import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/important_event.dart';
-import '../models/event_type.dart';  
-import 'event_adapters.dart';
+import '../models/event_type.dart';
 
 class HiveService {
   static const String eventsBox = 'important_events';
-  late Box<ImportantEvent> _eventsBox;
+  late Box<String> _eventsBox; // Store as JSON string
   
-  // Initialize Hive (no encryption for simplicity)
   Future<void> init() async {
     await Hive.initFlutter();
-    
-    // Register adapters
-   // Hive.registerAdapter(ImportantEventAdapter());
-    Hive.registerAdapter(EventTypeAdapter());
-    
-    // Open box (stored locally in app's document directory)
-    _eventsBox = await Hive.openBox<ImportantEvent>(eventsBox);
+    _eventsBox = await Hive.openBox<String>(eventsBox);
   }
   
-  // CRUD Operations
+  // Save event as JSON string
   Future<void> saveEvent(ImportantEvent event) async {
-    await _eventsBox.put(event.id, event);
+    final jsonString = jsonEncode(event.toJson());
+    await _eventsBox.put(event.id, jsonString);
   }
   
   Future<void> deleteEvent(String id) async {
@@ -29,16 +23,18 @@ class HiveService {
   }
   
   Future<void> updateEvent(ImportantEvent event) async {
-    await _eventsBox.put(event.id, event);
+    await saveEvent(event);
   }
   
   List<ImportantEvent> getAllEvents() {
-    return _eventsBox.values.toList();
+    return _eventsBox.values
+        .map((jsonString) => ImportantEvent.fromJson(jsonDecode(jsonString)))
+        .toList();
   }
   
   List<ImportantEvent> getUpcomingEvents() {
     final now = DateTime.now();
-    return _eventsBox.values
+    return getAllEvents()
         .where((event) => event.dateTime.isAfter(now) && event.isEnabled)
         .toList()
       ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
@@ -46,14 +42,16 @@ class HiveService {
   
   List<ImportantEvent> getPastEvents() {
     final now = DateTime.now();
-    return _eventsBox.values
+    return getAllEvents()
         .where((event) => event.dateTime.isBefore(now))
         .toList()
       ..sort((a, b) => b.dateTime.compareTo(a.dateTime));
   }
   
   ImportantEvent? getEvent(String id) {
-    return _eventsBox.get(id);
+    final jsonString = _eventsBox.get(id);
+    if (jsonString == null) return null;
+    return ImportantEvent.fromJson(jsonDecode(jsonString));
   }
   
   Future<void> clearAllEvents() async {
@@ -64,10 +62,6 @@ class HiveService {
     return _eventsBox.length;
   }
   
-  Stream<Box<ImportantEvent>> watchEvents() {
-    return _eventsBox.watch().map((_) => _eventsBox);
-  }
-  
   // Check if event exists
   bool eventExists(String id) {
     return _eventsBox.containsKey(id);
@@ -75,7 +69,7 @@ class HiveService {
   
   // Get events by type
   List<ImportantEvent> getEventsByType(EventType type) {
-    return _eventsBox.values
+    return getAllEvents()
         .where((event) => event.eventType == type)
         .toList();
   }
@@ -83,7 +77,7 @@ class HiveService {
   // Get today's events
   List<ImportantEvent> getTodaysEvents() {
     final now = DateTime.now();
-    return _eventsBox.values
+    return getAllEvents()
         .where((event) => 
             event.dateTime.year == now.year &&
             event.dateTime.month == now.month &&
